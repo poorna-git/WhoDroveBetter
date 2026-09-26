@@ -11,10 +11,11 @@ interface Car {
   id: string;
   make: string;
   model: string;
-  year?: number;
+  year?: number | null;
   tier: string;
   horsepower: number;
   country: string;
+  isExternal?: boolean;
 }
 
 export default function LogCarPage() {
@@ -82,8 +83,33 @@ export default function LogCarPage() {
     }
   };
 
-  const handleSelectCar = (car: Car) => {
-    setSelectedCar(car);
+  const handleSelectCar = async (car: Car) => {
+    // If it's an external car, save it to DB first
+    if (car.isExternal) {
+      try {
+        const res = await fetch("/api/cars", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            make: car.make,
+            model: car.model,
+            year: car.year || null,
+          }),
+        });
+        const data = await res.json();
+        if (data.car) {
+          setSelectedCar(data.car);
+        } else {
+          setSelectedCar(car);
+        }
+      } catch (error) {
+        console.error("Failed to save external car:", error);
+        setSelectedCar(car);
+      }
+    } else {
+      setSelectedCar(car);
+    }
+
     setSearchQuery("");
     setCars([]);
   };
@@ -175,7 +201,7 @@ export default function LogCarPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Type make or model (e.g. M3, Supra, Civic)"
+                placeholder="Type make or model (e.g. M3, Supra, Civic, Tesla)"
                 className="w-full pl-12 pr-4 py-3 bg-bg-card border border-bg-hover rounded-xl text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-red/50 focus:border-accent-red transition-all"
                 autoFocus
               />
@@ -184,7 +210,7 @@ export default function LogCarPage() {
             {searching && (
               <p className="text-text-muted text-sm flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Searching...
+                Searching local database & internet...
               </p>
             )}
 
@@ -201,10 +227,16 @@ export default function LogCarPage() {
                     >
                       <div>
                         <p className="font-semibold text-text group-hover:text-accent-red transition-colors">
-                          {car.year} {car.make} {car.model}
+                          {car.year ? `${car.year} ` : ""}{car.make} {car.model}
                         </p>
                         <p className="text-xs text-text-muted">
-                          {tierInfo.emoji} {tierInfo.label} • {car.horsepower} HP • {car.country}
+                          {car.isExternal ? (
+                            <span>🌐 Internet Result</span>
+                          ) : (
+                            <span>
+                              {tierInfo.emoji} {tierInfo.label} • {car.horsepower} HP • {car.country}
+                            </span>
+                          )}
                         </p>
                       </div>
                       <Car className="w-5 h-5 text-text-muted group-hover:text-accent-red transition-colors" />
@@ -219,7 +251,7 @@ export default function LogCarPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-heading text-lg text-text">
-                  {selectedCar.year} {selectedCar.make} {selectedCar.model}
+                  {selectedCar.year ? `${selectedCar.year} ` : ""}{selectedCar.make} {selectedCar.model}
                 </p>
                 <p className="text-sm text-text-muted">
                   {TIER_LABELS[selectedCar.tier]?.emoji} {getTierComment(selectedCar.tier)}
