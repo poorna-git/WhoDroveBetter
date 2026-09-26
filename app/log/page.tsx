@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Search, Camera, Star, MessageSquare, Settings2, Loader2, CheckCircle, Car } from "lucide-react";
 import { getNoPhotoComment, getTierComment } from "@/lib/comments";
 import { TIER_LABELS } from "@/lib/points";
 
-interface Car {
+interface CarResult {
   id: string;
   make: string;
   model: string;
@@ -23,9 +23,12 @@ export default function LogCarPage() {
   const router = useRouter();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [cars, setCars] = useState<Car[]>([]);
-  const [selectedCar, setSelectedCar] = useState<Car | null>(null);
+  const [cars, setCars] = useState<CarResult[]>([]);
+  const [selectedCar, setSelectedCar] = useState<CarResult | null>(null);
   const [searching, setSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Optional fields
   const [showOptional, setShowOptional] = useState(false);
@@ -43,6 +46,7 @@ export default function LogCarPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [noPhotoRoast, setNoPhotoRoast] = useState("");
+  const [pointsEarned, setPointsEarned] = useState(0);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -52,13 +56,40 @@ export default function LogCarPage() {
     }
   }, [status, router]);
 
+  // Debounced search — waits 300ms after user stops typing
   useEffect(() => {
-    if (searchQuery.length >= 2) {
-      searchCars();
-    } else {
-      setCars([]);
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
     }
+
+    if (searchQuery.length < 2) {
+      setCars([]);
+      setShowResults(false);
+      return;
+    }
+
+    setSearching(true);
+    debounceTimer.current = setTimeout(() => {
+      searchCars(searchQuery);
+    }, 300);
+
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
   }, [searchQuery]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchGroups = async () => {
     try {
@@ -70,12 +101,12 @@ export default function LogCarPage() {
     }
   };
 
-  const searchCars = async () => {
-    setSearching(true);
+  const searchCars = async (query: string) => {
     try {
-      const res = await fetch(`/api/cars?q=${encodeURIComponent(searchQuery)}&limit=20`);
+      const res = await fetch(`/api/cars?q=${encodeURIComponent(query)}&limit=30`);
       const data = await res.json();
       setCars(data.cars || []);
+      setShowResults(true);
     } catch (error) {
       console.error("Failed to search cars:", error);
     } finally {
@@ -83,7 +114,7 @@ export default function LogCarPage() {
     }
   };
 
-  const handleSelectCar = async (car: Car) => {
+  const handleSelectCar = async (car: CarResult) => {
     // If it's an external car, save it to DB first
     if (car.isExternal) {
       try {
@@ -112,6 +143,7 @@ export default function LogCarPage() {
 
     setSearchQuery("");
     setCars([]);
+    setShowResults(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,6 +172,7 @@ export default function LogCarPage() {
       }
 
       const data = await res.json();
+      setPointsEarned(data.pointsBreakdown?.total || 10);
 
       // Show roast if no photo
       if (!photoUrl) {
@@ -149,7 +182,7 @@ export default function LogCarPage() {
       setSuccess(true);
       setTimeout(() => {
         router.push("/");
-      }, 2000);
+      }, 2500);
     } catch (error) {
       console.error("Failed to log drive:", error);
       alert("Failed to log drive. Try again.");
@@ -171,10 +204,15 @@ export default function LogCarPage() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4 animate-fade-in">
         <CheckCircle className="w-16 h-16 text-accent-green" />
         <h2 className="font-heading text-2xl text-text">Drive Logged! 🏁</h2>
+        <p className="text-accent-yellow font-heading text-3xl animate-count-up">
+          +{pointsEarned} pts
+        </p>
         {noPhotoRoast && (
-          <p className="text-text-muted italic max-w-sm">{noPhotoRoast}</p>
+          <p className="text-text-muted italic max-w-sm bg-bg-card rounded-xl p-3 text-sm">
+            {noPhotoRoast}
+          </p>
         )}
-        <p className="text-text-secondary">Redirecting to feed...</p>
+        <p className="text-text-secondary text-sm">Redirecting to feed...</p>
       </div>
     );
   }
@@ -184,14 +222,14 @@ export default function LogCarPage() {
       <div className="text-center space-y-2">
         <h1 className="font-heading text-3xl text-text">Log a Car 🚗</h1>
         <p className="text-text-muted text-sm">
-          What have you driven recently?
+          Search by make or model — e.g. "Slavia", "Skoda", "i20", "City"
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Car Selection */}
         {!selectedCar ? (
-          <div className="space-y-3">
+          <div className="space-y-3 relative" ref={dropdownRef}>
             <label className="text-sm font-medium text-text-secondary">
               Search for a car *
             </label>
@@ -201,49 +239,56 @@ export default function LogCarPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Type make or model (e.g. M3, Supra, Civic, Tesla)"
+                onFocus={() => cars.length > 0 && setShowResults(true)}
+                placeholder='Type make or model (e.g. "Slavia", "i20", "City", "Creta")'
                 className="w-full pl-12 pr-4 py-3 bg-bg-card border border-bg-hover rounded-xl text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-red/50 focus:border-accent-red transition-all"
                 autoFocus
               />
+              {searching && (
+                <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-accent-red" />
+              )}
             </div>
 
-            {searching && (
-              <p className="text-text-muted text-sm flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Searching local database & internet...
-              </p>
-            )}
-
-            {cars.length > 0 && (
-              <div className="bg-bg-card rounded-xl border border-bg-hover max-h-96 overflow-y-auto">
-                {cars.map((car) => {
+            {showResults && cars.length > 0 && (
+              <div className="absolute z-50 left-0 right-0 bg-bg-card rounded-xl border border-bg-hover max-h-80 overflow-y-auto shadow-2xl">
+                {cars.map((car, index) => {
                   const tierInfo = TIER_LABELS[car.tier] || TIER_LABELS.common;
                   return (
                     <button
-                      key={car.id}
+                      key={`${car.id}-${index}`}
                       type="button"
-                      onClick={() => handleSelectCar(car)}
-                      className="w-full text-left px-4 py-3 hover:bg-bg-hover transition-colors flex items-center justify-between group"
+                      onMouseDown={(e) => {
+                        // Use mousedown instead of click to fire before blur hides the dropdown
+                        e.preventDefault();
+                        handleSelectCar(car);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-bg-hover transition-colors flex items-center justify-between group border-b border-bg-hover/50 last:border-0"
                     >
                       <div>
                         <p className="font-semibold text-text group-hover:text-accent-red transition-colors">
-                          {car.year ? `${car.year} ` : ""}{car.make} {car.model}
+                          {car.make} {car.model} {car.year ? `(${car.year})` : ""}
                         </p>
-                        <p className="text-xs text-text-muted">
+                        <p className="text-xs text-text-muted mt-0.5">
                           {car.isExternal ? (
-                            <span>🌐 Internet Result</span>
+                            <span>🌐 Found online — tap to add</span>
                           ) : (
                             <span>
-                              {tierInfo.emoji} {tierInfo.label} • {car.horsepower} HP • {car.country}
+                              {tierInfo.emoji} {tierInfo.label} • {car.horsepower > 0 ? `${car.horsepower} HP • ` : ""}{car.country}
                             </span>
                           )}
                         </p>
                       </div>
-                      <Car className="w-5 h-5 text-text-muted group-hover:text-accent-red transition-colors" />
+                      <Car className="w-5 h-5 text-text-muted group-hover:text-accent-red transition-colors flex-shrink-0" />
                     </button>
                   );
                 })}
               </div>
+            )}
+
+            {!searching && searchQuery.length >= 2 && cars.length === 0 && (
+              <p className="text-text-muted text-sm text-center py-4">
+                No cars found for "{searchQuery}". Try a different spelling.
+              </p>
             )}
           </div>
         ) : (
@@ -251,7 +296,7 @@ export default function LogCarPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-heading text-lg text-text">
-                  {selectedCar.year ? `${selectedCar.year} ` : ""}{selectedCar.make} {selectedCar.model}
+                  {selectedCar.make} {selectedCar.model} {selectedCar.year ? `(${selectedCar.year})` : ""}
                 </p>
                 <p className="text-sm text-text-muted">
                   {TIER_LABELS[selectedCar.tier]?.emoji} {getTierComment(selectedCar.tier)}
