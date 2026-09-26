@@ -1,7 +1,13 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+export interface CarData {
+  make: string;
+  model: string;
+  year?: number;
+  tier: "common" | "enthusiast" | "premium" | "exotic" | "unicorn";
+  horsepower: number;
+  country: string;
+}
 
-const cars = [
+export const CARS_DATABASE: CarData[] = [
   // ──────────── MARUTI SUZUKI ────────────
   { make: "Maruti Suzuki", model: "800", year: 1997, tier: "common", horsepower: 37, country: "India" },
   { make: "Maruti Suzuki", model: "Alto", year: 2000, tier: "common", horsepower: 47, country: "India" },
@@ -43,7 +49,6 @@ const cars = [
   { make: "Maruti Suzuki", model: "Eeco", year: 2023, tier: "common", horsepower: 73, country: "India" },
   { make: "Maruti Suzuki", model: "S-Cross", year: 2022, tier: "common", horsepower: 103, country: "India" },
   { make: "Maruti Suzuki", model: "S-Cross 1.6 DDiS", year: 2017, tier: "enthusiast", horsepower: 120, country: "India" },
-  { make: "Maruti Suzuki", model: "1000", year: 2000, tier: "common", horsepower: 46, country: "India" },
 
   // ──────────── HYUNDAI ────────────
   { make: "Hyundai", model: "Santro", year: 2019, tier: "common", horsepower: 68, country: "South Korea" },
@@ -270,7 +275,7 @@ const cars = [
   { make: "Jeep", model: "Wrangler Rubicon", year: 2024, tier: "enthusiast", horsepower: 272, country: "USA" },
   { make: "Jeep", model: "Grand Cherokee", year: 2024, tier: "premium", horsepower: 272, country: "USA" },
 
-  // ──────────── BMW ────────────
+  // ──────────── LUXURY GERMAN & BRITISH (India) ────────────
   { make: "BMW", model: "3 Series Gran Limousine (330Li)", year: 2024, tier: "premium", horsepower: 258, country: "Germany" },
   { make: "BMW", model: "M340i xDrive", year: 2024, tier: "premium", horsepower: 382, country: "Germany" },
   { make: "BMW", model: "2 Series Gran Coupe (220i)", year: 2023, tier: "premium", horsepower: 192, country: "Germany" },
@@ -290,7 +295,6 @@ const cars = [
   { make: "BMW", model: "i7", year: 2024, tier: "exotic", horsepower: 544, country: "Germany" },
   { make: "BMW", model: "Z4 M40i", year: 2024, tier: "premium", horsepower: 340, country: "Germany" },
 
-  // ──────────── MERCEDES-BENZ ────────────
   { make: "Mercedes-Benz", model: "A-Class Limousine (A200)", year: 2023, tier: "premium", horsepower: 163, country: "Germany" },
   { make: "Mercedes-Benz", model: "C-Class (C200 / C220d)", year: 2024, tier: "premium", horsepower: 204, country: "Germany" },
   { make: "Mercedes-Benz", model: "E-Class (E200 / E220d / E350d)", year: 2024, tier: "premium", horsepower: 197, country: "Germany" },
@@ -308,7 +312,6 @@ const cars = [
   { make: "Mercedes-Benz", model: "Maybach S580 / S680", year: 2024, tier: "unicorn", horsepower: 612, country: "Germany" },
   { make: "Mercedes-Benz", model: "Maybach GLS 600", year: 2024, tier: "unicorn", horsepower: 557, country: "Germany" },
 
-  // ──────────── AUDI ────────────
   { make: "Audi", model: "A4 (40 TFSI)", year: 2024, tier: "premium", horsepower: 204, country: "Germany" },
   { make: "Audi", model: "A6 (45 TFSI)", year: 2024, tier: "premium", horsepower: 245, country: "Germany" },
   { make: "Audi", model: "A8 L", year: 2024, tier: "exotic", horsepower: 340, country: "Germany" },
@@ -321,7 +324,6 @@ const cars = [
   { make: "Audi", model: "RS e-tron GT", year: 2024, tier: "exotic", horsepower: 646, country: "Germany" },
   { make: "Audi", model: "R8 V10", year: 2020, tier: "exotic", horsepower: 610, country: "Germany" },
 
-  // ──────────── LAND ROVER / JAGUAR ────────────
   { make: "Land Rover", model: "Defender 110", year: 2024, tier: "premium", horsepower: 300, country: "UK" },
   { make: "Land Rover", model: "Defender 90", year: 2024, tier: "premium", horsepower: 300, country: "UK" },
   { make: "Land Rover", model: "Defender 130", year: 2024, tier: "premium", horsepower: 300, country: "UK" },
@@ -334,7 +336,6 @@ const cars = [
   { make: "Jaguar", model: "F-Type", year: 2023, tier: "premium", horsepower: 300, country: "UK" },
   { make: "Jaguar", model: "XF", year: 2023, tier: "premium", horsepower: 250, country: "UK" },
 
-  // ──────────── VOLVO ────────────
   { make: "Volvo", model: "XC40", year: 2023, tier: "premium", horsepower: 197, country: "Sweden" },
   { make: "Volvo", model: "XC40 Recharge (EX40)", year: 2024, tier: "premium", horsepower: 408, country: "Sweden" },
   { make: "Volvo", model: "C40 Recharge (EC40)", year: 2024, tier: "premium", horsepower: 408, country: "Sweden" },
@@ -342,7 +343,6 @@ const cars = [
   { make: "Volvo", model: "XC90", year: 2024, tier: "premium", horsepower: 300, country: "Sweden" },
   { make: "Volvo", model: "S90", year: 2024, tier: "premium", horsepower: 250, country: "Sweden" },
 
-  // ──────────── PORSCHE ────────────
   { make: "Porsche", model: "911 Carrera", year: 2024, tier: "exotic", horsepower: 385, country: "Germany" },
   { make: "Porsche", model: "911 GT3", year: 2024, tier: "exotic", horsepower: 510, country: "Germany" },
   { make: "Porsche", model: "911 Turbo S", year: 2024, tier: "exotic", horsepower: 650, country: "Germany" },
@@ -354,7 +354,7 @@ const cars = [
   { make: "Porsche", model: "Panamera", year: 2024, tier: "exotic", horsepower: 353, country: "Germany" },
   { make: "Porsche", model: "Taycan", year: 2024, tier: "exotic", horsepower: 408, country: "Germany" },
 
-  // ──────────── SUPER & HYPERCARS ────────────
+  // ──────────── SUPER & HYPERCARS (Exotics & Unicorns) ────────────
   { make: "Lamborghini", model: "Urus", year: 2024, tier: "exotic", horsepower: 666, country: "Italy" },
   { make: "Lamborghini", model: "Huracan Evo", year: 2023, tier: "exotic", horsepower: 640, country: "Italy" },
   { make: "Lamborghini", model: "Huracan STO", year: 2023, tier: "exotic", horsepower: 640, country: "Italy" },
@@ -394,56 +394,6 @@ const cars = [
   { make: "Hindustan Motors", model: "Ambassador", year: 2005, tier: "common", horsepower: 75, country: "India" },
   { make: "Premier", model: "Padmini", year: 1998, tier: "common", horsepower: 48, country: "India" },
   { make: "Hindustan Motors", model: "Contessa", year: 2002, tier: "enthusiast", horsepower: 75, country: "India" },
+  { make: "Maruti Suzuki", model: "1000", year: 2000, tier: "common", horsepower: 46, country: "India" },
   { make: "Standard", model: "Herald", year: 1975, tier: "common", horsepower: 39, country: "India" },
 ];
-
-async function main() {
-  console.log(`Seeding ${cars.length} cars...`);
-  let created = 0;
-  let updated = 0;
-
-  for (const car of cars) {
-    try {
-      // Use year 0 for null years in the unique constraint
-      const yearVal = car.year || 0;
-
-      await prisma.car.upsert({
-        where: {
-          make_model_year: {
-            make: car.make,
-            model: car.model,
-            year: yearVal,
-          },
-        },
-        update: {
-          tier: car.tier,
-          horsepower: car.horsepower,
-          country: car.country,
-        },
-        create: {
-          make: car.make,
-          model: car.model,
-          year: car.year || null,
-          tier: car.tier,
-          horsepower: car.horsepower,
-          country: car.country,
-        },
-      });
-      created++;
-    } catch (error) {
-      console.error(`Failed to upsert ${car.make} ${car.model}:`, error.message);
-    }
-  }
-
-  console.log(`✅ Seeded ${created} cars successfully!`);
-}
-
-main()
-  .then(async () => {
-    await prisma.$disconnect();
-  })
-  .catch(async (e) => {
-    console.error(e);
-    await prisma.$disconnect();
-    process.exit(1);
-  });
