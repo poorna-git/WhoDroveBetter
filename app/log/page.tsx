@@ -125,6 +125,9 @@ export default function LogCarPage() {
             make: car.make,
             model: car.model,
             year: car.year || null,
+            tier: car.tier,
+            horsepower: car.horsepower,
+            country: car.country,
           }),
         });
         const data = await res.json();

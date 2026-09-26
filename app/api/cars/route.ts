@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { CARS_DATABASE } from "@/lib/cars-data";
 
 // Helper to fetch from NHTSA API
 async function searchNHTSA(query: string) {
@@ -42,41 +43,104 @@ export async function GET(req: Request) {
       return NextResponse.json({ cars: [] });
     }
 
-    // Search both database and NHTSA simultaneously
+    const cleanQuery = query.toLowerCase().trim();
+    const compactQuery = cleanQuery.replace(/[\s\-_]/g, "");
+
+    // 1. Search in-memory CARS_DATABASE
+    const memoryResults = CARS_DATABASE.filter((car) => {
+      const full = `${car.make} ${car.model}`.toLowerCase();
+      const compactFull = full.replace(/[\s\-_]/g, "");
+      const matchQuery =
+        full.includes(cleanQuery) ||
+        compactFull.includes(compactQuery) ||
+        car.make.toLowerCase().includes(cleanQuery) ||
+        car.model.toLowerCase().includes(cleanQuery);
+
+      if (!matchQuery) return false;
+      if (tier && car.tier !== tier) return false;
+      if (make && car.make.toLowerCase() !== make.toLowerCase()) return false;
+      if (country && car.country.toLowerCase() !== country.toLowerCase()) return false;
+      return true;
+    }).map((car, idx) => ({
+      id: `local-${car.make}-${car.model}-${car.year || 0}`,
+      make: car.make,
+      model: car.model,
+      year: car.year || null,
+      tier: car.tier,
+      horsepower: car.horsepower,
+      country: car.country,
+      isExternal: true, // Will be saved to DB if not already present
+    }));
+
+    // 2. Search Database and NHTSA in parallel
     const [dbCars, nhtsaCars] = await Promise.all([
-      // Database search
       (async () => {
-        const where: any = {};
+        try {
+          const where: any = {};
+          if (query) {
+            where.OR = [
+              { make: { contains: query, mode: "insensitive" } },
+              { model: { contains: query, mode: "insensitive" } },
+            ];
+          }
+          if (tier) where.tier = tier;
+          if (make) where.make = { equals: make, mode: "insensitive" };
+          if (country) where.country = country;
 
-        if (query) {
-          where.OR = [
-            { make: { contains: query, mode: "insensitive" } },
-            { model: { contains: query, mode: "insensitive" } },
-          ];
+          return await prisma.car.findMany({
+            where,
+            take: limit,
+            orderBy: [
+              { tier: "desc" },
+              { make: "asc" },
+              { model: "asc" },
+            ],
+          });
+        } catch (dbErr) {
+          console.error("DB car query error (fallback to local):", dbErr);
+          return [];
         }
-
-        if (tier) where.tier = tier;
-        if (make) where.make = { equals: make, mode: "insensitive" };
-        if (country) where.country = country;
-
-        return prisma.car.findMany({
-          where,
-          take: limit,
-          orderBy: [
-            { tier: "desc" },
-            { make: "asc" },
-            { model: "asc" },
-          ],
-        });
       })(),
       // NHTSA API search (only if no filters applied)
       !tier && !make && !country ? searchNHTSA(query) : Promise.resolve([]),
     ]);
 
-    // Merge results: DB first (higher quality), then NHTSA
-    const mergedCars = [...dbCars, ...nhtsaCars].slice(0, limit);
+    // 3. Deduplicate: DB cars have highest priority (real DB id), then memoryResults, then NHTSA
+    const seen = new Set<string>();
+    const mergedCars: any[] = [];
 
-    return NextResponse.json({ cars: mergedCars });
+    // Helper key for deduplication
+    const makeKey = (c: { make: string; model: string; year?: number | null }) =>
+      `${c.make.toLowerCase().trim()}_${c.model.toLowerCase().trim()}_${c.year || 0}`;
+
+    // Add DB results first
+    for (const car of dbCars) {
+      const key = makeKey(car);
+      if (!seen.has(key)) {
+        seen.add(key);
+        mergedCars.push({ ...car, isExternal: false });
+      }
+    }
+
+    // Add local memory results next
+    for (const car of memoryResults) {
+      const key = makeKey(car);
+      if (!seen.has(key)) {
+        seen.add(key);
+        mergedCars.push(car);
+      }
+    }
+
+    // Add NHTSA results last
+    for (const car of nhtsaCars) {
+      const key = makeKey(car);
+      if (!seen.has(key)) {
+        seen.add(key);
+        mergedCars.push(car);
+      }
+    }
+
+    return NextResponse.json({ cars: mergedCars.slice(0, limit) });
   } catch (error) {
     console.error("Car fetch error:", error);
     return NextResponse.json(
@@ -89,7 +153,7 @@ export async function GET(req: Request) {
 // POST: Save an external car to the database when selected
 export async function POST(req: Request) {
   try {
-    const { make, model, year } = await req.json();
+    const { make, model, year, tier, horsepower, country } = await req.json();
 
     if (!make || !model) {
       return NextResponse.json(
@@ -113,15 +177,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ car: existing });
     }
 
-    // Create new car from external source
+    // Lookup metadata from local CARS_DATABASE if not provided
+    const localMatch = CARS_DATABASE.find(
+      (c) =>
+        c.make.toLowerCase() === make.toLowerCase() &&
+        c.model.toLowerCase() === model.toLowerCase() &&
+        (year ? c.year === year : true)
+    );
+
+    // Create new car
     const car = await prisma.car.create({
       data: {
         make,
         model,
         year: year || null,
-        tier: "common",
-        horsepower: 0,
-        country: "Unknown",
+        tier: tier || localMatch?.tier || "common",
+        horsepower: horsepower || localMatch?.horsepower || 0,
+        country: country || localMatch?.country || "Unknown",
       },
     });
 
