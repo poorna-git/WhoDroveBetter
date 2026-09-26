@@ -15,6 +15,25 @@ export async function GET(req: Request) {
     // If no username provided, use logged-in user
     let userId = session?.user?.id;
 
+    if (!userId && session?.user) {
+      // Fallback: look up by username (email field in session stores username)
+      const lookupName = (session.user as any).email || session.user.name;
+      if (lookupName) {
+        const found = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { username: lookupName },
+              { displayName: lookupName },
+            ],
+          },
+          select: { id: true },
+        });
+        if (found) {
+          userId = found.id;
+        }
+      }
+    }
+
     if (username) {
       const user = await prisma.user.findUnique({
         where: { username },
@@ -30,17 +49,34 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fetch user profile
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        avatarUrl: true,
-        createdAt: true,
-      },
-    });
+    // Fetch user profile with fallback if avatarUrl column is not yet migrated
+    let user: any = null;
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          avatarUrl: true,
+          createdAt: true,
+        },
+      });
+    } catch (columnErr) {
+      // Fallback if avatarUrl column is not yet created in PostgreSQL table
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          createdAt: true,
+        },
+      });
+      if (user) {
+        user.avatarUrl = null;
+      }
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -53,25 +89,27 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    // Calculate stats
+    // Calculate stats safely
     const totalDrives = drives.length;
-    const totalPoints = drives.reduce((sum, d) => sum + d.points, 0);
-    const totalHorsepower = drives.reduce((sum, d) => sum + d.car.horsepower, 0);
+    const totalPoints = drives.reduce((sum, d) => sum + (d.points || 0), 0);
+    const totalHorsepower = drives.reduce((sum, d) => sum + (d.car?.horsepower || 0), 0);
 
-    const uniqueBrands = Array.from(new Set(drives.map((d) => d.car.make)));
+    const uniqueBrands = Array.from(new Set(drives.map((d) => d.car?.make).filter(Boolean)));
 
     const countryBreakdown: Record<string, number> = {};
     drives.forEach((d) => {
-      countryBreakdown[d.car.country] = (countryBreakdown[d.car.country] || 0) + 1;
+      const country = d.car?.country || "Unknown";
+      countryBreakdown[country] = (countryBreakdown[country] || 0) + 1;
     });
 
     const tierBreakdown: Record<string, number> = {};
     drives.forEach((d) => {
-      tierBreakdown[d.car.tier] = (tierBreakdown[d.car.tier] || 0) + 1;
+      const tier = d.car?.tier || "common";
+      tierBreakdown[tier] = (tierBreakdown[tier] || 0) + 1;
     });
 
     const manualCount = drives.filter((d) => d.isManual).length;
-    const photoCount = drives.filter((d) => d.photoUrl).length;
+    const photoCount = drives.filter((d) => Boolean(d.photoUrl)).length;
 
     // Calculate longest streak
     const sortedDrives = [...drives].sort(
@@ -87,7 +125,7 @@ export async function GET(req: Request) {
     const uniqueDates = Array.from(new Set(driveDates)).sort((a, b) => a - b);
 
     let longestStreak = 0;
-    let currentStreak = 1;
+    let currentStreak = uniqueDates.length > 0 ? 1 : 0;
 
     for (let i = 1; i < uniqueDates.length; i++) {
       const diff = (uniqueDates[i] - uniqueDates[i - 1]) / (1000 * 60 * 60 * 24);
@@ -100,7 +138,9 @@ export async function GET(req: Request) {
     }
     longestStreak = Math.max(longestStreak, currentStreak);
 
-    const topRating = Math.max(...drives.map((d) => d.rating || 0));
+    // Calculate top rating safely (never -Infinity)
+    const validRatings = drives.map((d) => d.rating || 0);
+    const topRating = validRatings.length > 0 ? Math.max(...validRatings) : 0;
 
     // Favorite car (highest rated, or most driven)
     const favoriteCar = drives.length > 0
@@ -131,7 +171,7 @@ export async function GET(req: Request) {
       user,
       stats,
       earnedBadges,
-      favoriteCar: favoriteCar
+      favoriteCar: favoriteCar && favoriteCar.car
         ? {
             id: favoriteCar.car.id,
             make: favoriteCar.car.make,
@@ -156,7 +196,24 @@ export async function PUT(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session?.user?.id) {
+    let userId = session?.user?.id;
+    if (!userId && session?.user) {
+      const lookupName = (session.user as any).email || session.user.name;
+      if (lookupName) {
+        const found = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { username: lookupName },
+              { displayName: lookupName },
+            ],
+          },
+          select: { id: true },
+        });
+        if (found) userId = found.id;
+      }
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -164,7 +221,7 @@ export async function PUT(req: Request) {
 
     // Fetch current user
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: userId },
     });
 
     if (!user) {
@@ -195,7 +252,7 @@ export async function PUT(req: Request) {
       updateData.username = username.trim();
     }
 
-    // Update avatarUrl
+    // Update avatarUrl if provided
     if (avatarUrl !== undefined) {
       updateData.avatarUrl = avatarUrl.trim() || null;
     }
@@ -224,18 +281,35 @@ export async function PUT(req: Request) {
       updateData.passwordHash = hashedPassword;
     }
 
-    // Perform update
-    const updatedUser = await prisma.user.update({
-      where: { id: session.user.id },
-      data: updateData,
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        avatarUrl: true,
-        createdAt: true,
-      },
-    });
+    // Perform update with try/catch fallback if avatarUrl column is not in DB
+    let updatedUser: any = null;
+    try {
+      updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: updateData,
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          avatarUrl: true,
+          createdAt: true,
+        },
+      });
+    } catch (updateErr) {
+      // If updating avatarUrl failed because column doesn't exist, remove it and retry
+      delete updateData.avatarUrl;
+      updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: updateData,
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          createdAt: true,
+        },
+      });
+      if (updatedUser) updatedUser.avatarUrl = null;
+    }
 
     return NextResponse.json({
       user: updatedUser,
