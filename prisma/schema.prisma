@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  displayName  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  drives       Drive[]
+  groupMembers GroupMember[]
+}
+
+model Car {
+  id           String   @id @default(cuid())
+  make         String
+  model        String
+  year         Int?
+  tier         String   @default("common") // common, enthusiast, premium, exotic, unicorn
+  horsepower   Int      @default(0)
+  country      String   @default("Unknown")
+  transmission String?  // manual, automatic, dct, cvt
+  imageUrl     String?
+
+  drives       Drive[]
+
+  @@unique([make, model, year])
+  @@index([make])
+  @@index([tier])
+}
+
+model Drive {
+  id          String   @id @default(cuid())
+  userId      String
+  carId       String
+  groupId     String?
+  photoUrl    String?
+  rating      Int?     // 1-10
+  comment     String?
+  context     String?  // owned, rental, friend, test_drive, track_day
+  isManual    Boolean  @default(false)
+  points      Int      @default(10)
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  car         Car      @relation(fields: [carId], references: [id])
+  group       Group?   @relation(fields: [groupId], references: [id])
+
+  @@index([userId])
+  @@index([groupId])
+  @@index([createdAt])
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  inviteCode  String   @unique
+  createdById String
+  createdAt   DateTime @default(now())
+
+  members     GroupMember[]
+  drives      Drive[]
+
+  @@index([inviteCode])
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  userId   String
+  groupId  String
+  role     String   @default("member") // admin, member
+  joinedAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+}
