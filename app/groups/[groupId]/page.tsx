@@ -18,7 +18,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, formatCarName } from "@/lib/utils";
 import { TIER_LABELS } from "@/lib/points";
 
 interface MemberStats {
@@ -388,7 +388,7 @@ export default function GroupDetailsPage() {
                     >
                       <div className="min-w-0">
                         <p className="font-semibold text-text text-sm truncate">
-                          {drive.year ? `${drive.year} ` : ""}{drive.make} {drive.model}
+                          {formatCarName(drive, selectedMember.recentCars)}
                         </p>
                         <p className="text-xs text-text-muted mt-0.5">
                           {tierInfo.emoji} {tierInfo.label}

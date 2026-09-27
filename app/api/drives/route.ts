@@ -43,10 +43,20 @@ export async function POST(req: Request) {
       select: { groupId: true },
     });
 
-    // Check if user already logged this car
+    // Check if user already logged this exact car (same carId = same make+model+year)
     const existingDrive = await prisma.drive.findFirst({
-      where: { userId, carId },
+      where: { userId, carId, groupId: null },
     });
+
+    if (existingDrive) {
+      return NextResponse.json(
+        {
+          error: "Already in your garage!",
+          message: `You've already logged the ${car.make} ${car.model}${car.year ? ` (${car.year})` : ""}. Try a different year or variant!`,
+        },
+        { status: 409 }
+      );
+    }
 
     // Check if brand is new to this user
     const priorBrandDrive = await prisma.drive.findFirst({

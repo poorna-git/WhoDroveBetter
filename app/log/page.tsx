@@ -30,8 +30,7 @@ export default function LogCarPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Optional fields
-  const [showOptional, setShowOptional] = useState(false);
+  // Optional fields (always visible now)
   const [photoUrl, setPhotoUrl] = useState("");
   const [rating, setRating] = useState("");
   const [comment, setComment] = useState("");
@@ -50,6 +49,8 @@ export default function LogCarPage() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastPoints, setToastPoints] = useState(0);
+  const [showNoPhotoRoast, setShowNoPhotoRoast] = useState(false);
+  const [roastMessage, setRoastMessage] = useState("");
 
   // Logged cars history (for current session)
   const [loggedCars, setLoggedCars] = useState<Array<{ make: string; model: string; points: number }>>([]);
@@ -102,7 +103,6 @@ export default function LogCarPage() {
     setComment("");
     setContext("");
     setIsManual(false);
-    setShowOptional(false);
   };
 
   const searchCars = async (query: string) => {
@@ -210,11 +210,12 @@ export default function LogCarPage() {
         }),
       });
 
-      if (!res.ok) {
-        throw new Error("Failed to log drive");
-      }
-
       const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || data.error || "Failed to log drive");
+        return;
+      }
       const points = data.pointsBreakdown?.total || 10;
       const groupsCount = data.groupsCount || 0;
 
@@ -230,16 +231,20 @@ export default function LogCarPage() {
         message += ` (personal + ${groupsCount} ${groupsCount === 1 ? 'group' : 'groups'})`;
       }
 
-      // Show roast if no photo
-      if (!photoUrl) {
-        message += ` • ${getNoPhotoComment()}`;
-      }
-
       setToastMessage(message);
       setToastPoints(points);
       setShowToast(true);
 
-      // Hide toast after 4 seconds
+      // Show roast if no photo
+      if (!photoUrl) {
+        setRoastMessage(getNoPhotoComment());
+        setShowNoPhotoRoast(true);
+        setTimeout(() => {
+          setShowNoPhotoRoast(false);
+        }, 5000);
+      }
+
+      // Hide success toast after 4 seconds
       setTimeout(() => {
         setShowToast(false);
       }, 4000);
@@ -272,6 +277,19 @@ export default function LogCarPage() {
             <div className="flex-1">
               <p className="text-text font-medium text-sm">{toastMessage}</p>
               <p className="text-accent-yellow font-heading text-xl mt-1">+{toastPoints} pts</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No Photo Roast Toast */}
+      {showNoPhotoRoast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-accent-red/10 border-2 border-accent-red rounded-xl shadow-2xl p-4 animate-fade-in max-w-md">
+          <div className="flex items-start gap-3">
+            <Camera className="w-6 h-6 text-accent-red flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-accent-red font-bold text-sm mb-1">No Photo? Really? 📸</p>
+              <p className="text-text text-sm italic">"{roastMessage}"</p>
             </div>
           </div>
         </div>
@@ -485,20 +503,8 @@ export default function LogCarPage() {
           </div>
         )}
 
-        {/* Optional Fields Toggle */}
+        {/* Optional Fields (always shown) */}
         {selectedCar && (
-          <button
-            type="button"
-            onClick={() => setShowOptional(!showOptional)}
-            className="flex items-center gap-2 text-text-secondary hover:text-text transition-colors text-sm"
-          >
-            <Settings2 className="w-4 h-4" />
-            {showOptional ? "Hide" : "Show"} optional details (photo, rating, context)
-          </button>
-        )}
-
-        {/* Optional Fields */}
-        {selectedCar && showOptional && (
           <div className="space-y-4 bg-bg-card rounded-xl p-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-text-secondary flex items-center gap-2">

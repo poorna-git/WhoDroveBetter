@@ -20,7 +20,31 @@ export function formatNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-/** Relative time from a date (e.g. "2 hours ago"). */
+/** Format car name cleanly without year, only showing year if there are multiple cars of the same make & model in the list. */
+export function formatCarName(
+  car: { make: string; model: string; year?: number | null },
+  carList?: Array<{ make: string; model: string; year?: number | null }>
+): string {
+  if (!car) return "";
+
+  // If a list of cars is provided, check if there are multiple cars with the same make + model
+  if (carList && carList.length > 0) {
+    const matchingCars = carList.filter(
+      (c) =>
+        c.make.toLowerCase().trim() === car.make.toLowerCase().trim() &&
+        c.model.toLowerCase().trim() === car.model.toLowerCase().trim()
+    );
+
+    // If there's more than one car with the same make & model, include the year to distinguish them
+    if (matchingCars.length > 1 && car.year) {
+      return `${car.year} ${car.make} ${car.model}`;
+    }
+  }
+
+  // Otherwise, display clean make + model without year
+  return `${car.make} ${car.model}`;
+}
+
 export function timeAgo(date: Date): string {
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);

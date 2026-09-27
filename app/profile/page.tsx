@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Car, Zap, Trophy, Flame, Flag, Star, LogOut, Loader2, Edit, X, Save } from "lucide-react";
 import { BADGES } from "@/lib/points";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, formatCarName } from "@/lib/utils";
 
 interface ProfileData {
   user: {
@@ -245,7 +245,7 @@ export default function ProfilePage() {
             Top Rated Car
           </p>
           <p className="font-heading text-lg text-text">
-            {profile.favoriteCar.year} {profile.favoriteCar.make} {profile.favoriteCar.model}
+            {formatCarName(profile.favoriteCar)}
           </p>
           {profile.favoriteCar.rating && (
             <p className="text-xs text-accent-yellow">

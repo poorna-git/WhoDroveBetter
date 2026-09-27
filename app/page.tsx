@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Car, Calendar, Trophy, Zap, Loader2 } from "lucide-react";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, formatCarName } from "@/lib/utils";
 import { TIER_LABELS } from "@/lib/points";
 
 interface Drive {
@@ -164,7 +164,7 @@ export default function HomePage() {
                           <p className="text-sm text-text-muted">
                             drove a{" "}
                             <span className={`font-semibold text-${tierInfo.color}`}>
-                              {drive.car.year} {drive.car.make} {drive.car.model}
+                              {formatCarName(drive.car, drives.map(d => d.car))}
                             </span>
                           </p>
                         </div>
