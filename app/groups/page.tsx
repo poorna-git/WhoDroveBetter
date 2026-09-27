@@ -3,16 +3,17 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Users, Plus, Key, Copy, Check, Car, Loader2, ArrowLeft, RefreshCw, Brain } from "lucide-react";
+import { Users, Plus, Key, Copy, Check, Car, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 export default function GroupsPage() {
-  const { session, status } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncingBackfill, setSyncingBackfill] = useState(false);
   const [copiedCode, setCopiedCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -40,7 +41,7 @@ export default function GroupsPage() {
     e.preventDefault();
     if (!groupName.trim()) return;
 
-    const submitting = true;
+    setSubmitting(true);
     try {
       const res = await fetch("/api/groups", {
         method: "POST",
@@ -66,7 +67,7 @@ export default function GroupsPage() {
     e.preventDefault();
     if (!inviteCode.trim()) return;
 
-    const submitting = true;
+    setSubmitting(true);
     try {
       const res = await fetch("/api/groups/join", {
         method: "POST",
@@ -112,7 +113,9 @@ export default function GroupsPage() {
     }
   };
 
-  const copyInviteCode = (code: string) => {
+  const copyInviteCode = (e: React.MouseEvent, code: string) => {
+    e.preventDefault();
+    e.stopPropagation();
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(""), 2000);
@@ -151,9 +154,8 @@ export default function GroupsPage() {
         <button
           onClick={handleSyncAllGroups}
           disabled={syncingBackfill}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-bg-card border-2 border-accent-yellow/30 text-accent-yellow font-semibold rounded-xl hover:bg-accent-yellow/10 active:scale-95 transition-all text-sm"
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-bg-card border-2 border-accent-yellow/30 text-accent-yellow font-semibold rounded-xl hover:bg-accent-yellow/10 active:scale-95 transition-all text-sm disabled:opacity-50"
         >
-          <Brain className="w-4 h-4" />
           {syncingBackfill ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -185,9 +187,10 @@ export default function GroupsPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
+                disabled={submitting}
                 className="flex-1 py-2 bg-accent-red text-white font-semibold rounded-lg text-sm hover:bg-accent-red/90 disabled:opacity-60"
               >
-                Create
+                {submitting ? "Creating..." : "Create"}
               </button>
               <button
                 type="button"
@@ -219,9 +222,10 @@ export default function GroupsPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
+                disabled={submitting}
                 className="flex-1 py-2 bg-accent-yellow text-bg font-semibold rounded-lg text-sm hover:bg-accent-yellow/90 disabled:opacity-60"
               >
-                Join
+                {submitting ? "Joining..." : "Join"}
               </button>
               <button
                 type="button"
@@ -242,7 +246,7 @@ export default function GroupsPage() {
         </div>
       ) : groups.length === 0 ? (
         <div className="bg-bg-card rounded-xl p-8 text-center text-text-muted">
-          You haven't joined any groups yet. Create one or join with an invite code!
+          You haven&apos;t joined any groups yet. Create one or join with an invite code!
         </div>
       ) : (
         <div className="space-y-3">
@@ -270,7 +274,7 @@ export default function GroupsPage() {
               <div className="flex items-center justify-between bg-bg rounded-lg p-2.5 text-xs">
                 <span className="text-text-muted">Invite Code:</span>
                 <button
-                  onClick={() => copyInviteCode(group.inviteCode)}
+                  onClick={(e) => copyInviteCode(e, group.inviteCode)}
                   className="flex items-center gap-1.5 font-mono text-accent-red hover:underline font-bold"
                 >
                   {group.inviteCode}
