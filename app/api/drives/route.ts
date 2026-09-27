@@ -17,7 +17,6 @@ export async function POST(req: Request) {
 
     const {
       carId,
-      groupId,
       photoUrl,
       rating,
       comment,
@@ -38,19 +37,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Car not found" }, { status: 404 });
     }
 
+    // Fetch all groups the user belongs to
+    const userGroups = await prisma.groupMember.findMany({
+      where: { userId },
+      select: { groupId: true },
+    });
+
     // Check if user already logged this car
     const existingDrive = await prisma.drive.findFirst({
       where: { userId, carId },
     });
-
-    // Check if first in group to log this car
-    let isFirstInGroup = false;
-    if (groupId) {
-      const priorGroupDrive = await prisma.drive.findFirst({
-        where: { groupId, carId },
-      });
-      isFirstInGroup = !priorGroupDrive;
-    }
 
     // Check if brand is new to this user
     const priorBrandDrive = await prisma.drive.findFirst({
@@ -87,40 +83,74 @@ export async function POST(req: Request) {
       checkDate.setDate(checkDate.getDate() - 1);
     }
 
-    // Calculate points using the full points engine
-    const pointsBreakdown = calculatePoints({
-      carTier: car.tier,
-      hasPhoto: Boolean(photoUrl),
-      hasReview: Boolean(rating || comment),
-      isManual: Boolean(isManual),
-      isFirstInGroup,
-      isNewBrand,
-      streakDays,
-    });
+    // Create drives for personal feed + each group the user belongs to
+    const drivesToCreate = [
+      // Personal drive (no groupId)
+      { groupId: null },
+      // One drive per group
+      ...userGroups.map(g => ({ groupId: g.groupId })),
+    ];
 
-    // Create the drive record
-    const drive = await prisma.drive.create({
-      data: {
-        userId,
-        carId,
-        groupId: groupId || null,
-        photoUrl: photoUrl || null,
-        rating: rating ? parseInt(rating) : null,
-        comment: comment || null,
-        context: context || null,
+    const createdDrives = [];
+    let totalPoints = 0;
+    let pointsBreakdown = null;
+
+    for (const driveData of drivesToCreate) {
+      // Check if first in THIS group to log this car
+      let isFirstInGroup = false;
+      if (driveData.groupId) {
+        const priorGroupDrive = await prisma.drive.findFirst({
+          where: { groupId: driveData.groupId, carId },
+        });
+        isFirstInGroup = !priorGroupDrive;
+      }
+
+      // Calculate points (same for all drives)
+      const breakdown = calculatePoints({
+        carTier: car.tier,
+        hasPhoto: Boolean(photoUrl),
+        hasReview: Boolean(rating || comment),
         isManual: Boolean(isManual),
-        points: pointsBreakdown.total,
-      },
-      include: {
-        car: true,
-        user: { select: { displayName: true, username: true } },
-      },
-    });
+        isFirstInGroup,
+        isNewBrand,
+        streakDays,
+      });
+
+      // Only count points once (for the personal drive)
+      if (!driveData.groupId) {
+        totalPoints = breakdown.total;
+        pointsBreakdown = breakdown;
+      }
+
+      // Create the drive record
+      const drive = await prisma.drive.create({
+        data: {
+          userId,
+          carId,
+          groupId: driveData.groupId,
+          photoUrl: photoUrl || null,
+          rating: rating ? parseInt(rating) : null,
+          comment: comment || null,
+          context: context || null,
+          isManual: Boolean(isManual),
+          points: breakdown.total,
+        },
+        include: {
+          car: true,
+          user: { select: { displayName: true, username: true } },
+          group: driveData.groupId ? { select: { name: true } } : undefined,
+        },
+      });
+
+      createdDrives.push(drive);
+    }
 
     return NextResponse.json({
-      drive,
+      drives: createdDrives,
+      drive: createdDrives[0], // Personal drive for backward compatibility
       pointsBreakdown,
       isFirstLog: !existingDrive,
+      groupsCount: userGroups.length,
     });
   } catch (error) {
     console.error("Drive creation error:", error);

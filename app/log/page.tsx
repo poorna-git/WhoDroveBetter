@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Search, Camera, Star, MessageSquare, Settings2, Loader2, CheckCircle, Car } from "lucide-react";
+import { Search, Camera, Star, MessageSquare, Settings2, Loader2, CheckCircle, Car, Plus } from "lucide-react";
 import { getNoPhotoComment, getTierComment } from "@/lib/comments";
 import { TIER_LABELS } from "@/lib/points";
 
@@ -38,21 +38,25 @@ export default function LogCarPage() {
   const [context, setContext] = useState("");
   const [isManual, setIsManual] = useState(false);
 
-  // Groups
-  const [groups, setGroups] = useState<any[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState("");
+  // Manual add modal
+  const [showManualAdd, setShowManualAdd] = useState(false);
+  const [manualMake, setManualMake] = useState("");
+  const [manualModel, setManualModel] = useState("");
+  const [manualYear, setManualYear] = useState("");
+  const [addingManual, setAddingManual] = useState(false);
 
   // Submit state
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [noPhotoRoast, setNoPhotoRoast] = useState("");
-  const [pointsEarned, setPointsEarned] = useState(0);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastPoints, setToastPoints] = useState(0);
+
+  // Logged cars history (for current session)
+  const [loggedCars, setLoggedCars] = useState<Array<{ make: string; model: string; points: number }>>([]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login");
-    } else if (status === "authenticated") {
-      fetchGroups();
     }
   }, [status, router]);
 
@@ -91,14 +95,14 @@ export default function LogCarPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchGroups = async () => {
-    try {
-      const res = await fetch("/api/groups");
-      const data = await res.json();
-      setGroups(data.groups || []);
-    } catch (error) {
-      console.error("Failed to fetch groups:", error);
-    }
+  const resetForm = () => {
+    setSelectedCar(null);
+    setPhotoUrl("");
+    setRating("");
+    setComment("");
+    setContext("");
+    setIsManual(false);
+    setShowOptional(false);
   };
 
   const searchCars = async (query: string) => {
@@ -149,6 +153,43 @@ export default function LogCarPage() {
     setShowResults(false);
   };
 
+  const handleManualAdd = async () => {
+    if (!manualMake.trim() || !manualModel.trim()) return;
+
+    setAddingManual(true);
+    try {
+      // The API will normalize the name and create the car
+      const res = await fetch("/api/cars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          make: manualMake.trim(),
+          model: manualModel.trim(),
+          year: manualYear ? parseInt(manualYear) : null,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.car) {
+        setSelectedCar(data.car);
+        setShowManualAdd(false);
+        setManualMake("");
+        setManualModel("");
+        setManualYear("");
+        setSearchQuery("");
+        setCars([]);
+        setShowResults(false);
+      } else {
+        alert(data.error || "Failed to add car. Try again.");
+      }
+    } catch (error) {
+      console.error("Failed to add car manually:", error);
+      alert("Failed to add car. Try again.");
+    } finally {
+      setAddingManual(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCar) return;
@@ -161,7 +202,6 @@ export default function LogCarPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           carId: selectedCar.id,
-          groupId: selectedGroupId || undefined,
           photoUrl: photoUrl || undefined,
           rating: rating ? parseInt(rating) : undefined,
           comment: comment || undefined,
@@ -175,17 +215,37 @@ export default function LogCarPage() {
       }
 
       const data = await res.json();
-      setPointsEarned(data.pointsBreakdown?.total || 10);
+      const points = data.pointsBreakdown?.total || 10;
+      const groupsCount = data.groupsCount || 0;
+
+      // Add to logged cars history
+      setLoggedCars(prev => [
+        ...prev,
+        { make: selectedCar.make, model: selectedCar.model, points },
+      ]);
+
+      // Show success toast
+      let message = `${selectedCar.make} ${selectedCar.model} logged!`;
+      if (groupsCount > 0) {
+        message += ` (personal + ${groupsCount} ${groupsCount === 1 ? 'group' : 'groups'})`;
+      }
 
       // Show roast if no photo
       if (!photoUrl) {
-        setNoPhotoRoast(getNoPhotoComment());
+        message += ` • ${getNoPhotoComment()}`;
       }
 
-      setSuccess(true);
+      setToastMessage(message);
+      setToastPoints(points);
+      setShowToast(true);
+
+      // Hide toast after 4 seconds
       setTimeout(() => {
-        router.push("/");
-      }, 2500);
+        setShowToast(false);
+      }, 4000);
+
+      // Reset form for next car
+      resetForm();
     } catch (error) {
       console.error("Failed to log drive:", error);
       alert("Failed to log drive. Try again.");
@@ -202,32 +262,45 @@ export default function LogCarPage() {
     );
   }
 
-  if (success) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4 animate-fade-in">
-        <CheckCircle className="w-16 h-16 text-accent-green" />
-        <h2 className="font-heading text-2xl text-text">Drive Logged! 🏁</h2>
-        <p className="text-accent-yellow font-heading text-3xl animate-count-up">
-          +{pointsEarned} pts
-        </p>
-        {noPhotoRoast && (
-          <p className="text-text-muted italic max-w-sm bg-bg-card rounded-xl p-3 text-sm">
-            {noPhotoRoast}
-          </p>
-        )}
-        <p className="text-text-secondary text-sm">Redirecting to feed...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-8 animate-fade-in">
+      {/* Success Toast */}
+      {showToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-bg-card border-2 border-accent-green rounded-xl shadow-2xl p-4 animate-fade-in max-w-md">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="w-6 h-6 text-accent-green flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-text font-medium text-sm">{toastMessage}</p>
+              <p className="text-accent-yellow font-heading text-xl mt-1">+{toastPoints} pts</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="text-center space-y-2">
         <h1 className="font-heading text-3xl text-text">Log a Car 🚗</h1>
         <p className="text-text-muted text-sm">
           Search by make or model — e.g. "Slavia", "Skoda", "i20", "City"
         </p>
       </div>
+
+      {/* Session logged cars counter */}
+      {loggedCars.length > 0 && (
+        <div className="bg-bg-card rounded-xl p-3 border border-bg-hover">
+          <p className="text-xs text-text-muted mb-2">
+            Logged this session ({loggedCars.length} {loggedCars.length === 1 ? 'car' : 'cars'}):
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {loggedCars.map((c, i) => (
+              <span key={i} className="inline-flex items-center gap-1 bg-bg-hover rounded-lg px-2 py-1 text-xs text-text">
+                <CheckCircle className="w-3 h-3 text-accent-green" />
+                {c.make} {c.model}
+                <span className="text-accent-yellow ml-1">+{c.points}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Car Selection */}
@@ -243,7 +316,7 @@ export default function LogCarPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => cars.length > 0 && setShowResults(true)}
-                placeholder='Type make or model (e.g. "Slavia", "i20", "City", "Creta")'
+                placeholder='Type make or model (e.g. "Slavia", "i20", "City", "Patrol")'
                 className="w-full pl-12 pr-4 py-3 bg-bg-card border border-bg-hover rounded-xl text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-red/50 focus:border-accent-red transition-all"
                 autoFocus
               />
@@ -269,7 +342,7 @@ export default function LogCarPage() {
                     >
                       <div>
                         <p className="font-semibold text-text group-hover:text-accent-red transition-colors">
-                          {car.make} {car.model} {car.year ? `(${car.year})` : ""}
+                          {car.make} {car.model}
                         </p>
                         <p className="text-xs text-text-muted mt-0.5">
                           {car.isExternal ? (
@@ -288,10 +361,27 @@ export default function LogCarPage() {
               </div>
             )}
 
+            {/* No results — offer manual add */}
             {!searching && searchQuery.length >= 2 && cars.length === 0 && (
-              <p className="text-text-muted text-sm text-center py-4">
-                No cars found for "{searchQuery}". Try a different spelling.
-              </p>
+              <div className="text-center py-4 space-y-3">
+                <p className="text-text-muted text-sm">
+                  No cars found for "{searchQuery}"
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Pre-fill brand/model from the search query
+                    const parts = searchQuery.trim().split(/\s+/);
+                    setManualMake(parts[0] || "");
+                    setManualModel(parts.slice(1).join(" ") || "");
+                    setShowManualAdd(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent-red text-white rounded-xl text-sm font-medium hover:bg-accent-red/90 active:scale-[0.98] transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add car manually
+                </button>
+              </div>
             )}
           </div>
         ) : (
@@ -299,7 +389,7 @@ export default function LogCarPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-heading text-lg text-text">
-                  {selectedCar.make} {selectedCar.model} {selectedCar.year ? `(${selectedCar.year})` : ""}
+                  {selectedCar.make} {selectedCar.model}
                 </p>
                 <p className="text-sm text-text-muted">
                   {TIER_LABELS[selectedCar.tier]?.emoji} {getTierComment(selectedCar.tier)}
@@ -316,24 +406,82 @@ export default function LogCarPage() {
           </div>
         )}
 
-        {/* Group Selection (if user has groups) */}
-        {selectedCar && groups.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-text-secondary">
-              Log to a group (optional)
-            </label>
-            <select
-              value={selectedGroupId}
-              onChange={(e) => setSelectedGroupId(e.target.value)}
-              className="w-full px-4 py-3 bg-bg-card border border-bg-hover rounded-xl text-text focus:outline-none focus:ring-2 focus:ring-accent-red/50 focus:border-accent-red transition-all"
-            >
-              <option value="">No group (personal only)</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
+        {/* Manual Add Modal */}
+        {showManualAdd && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-bg-card rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-fade-in">
+              <h3 className="font-heading text-xl text-text">Add Car Manually</h3>
+              <p className="text-text-muted text-sm">
+                We'll normalize the name and look up the details for you.
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-text-secondary block mb-1">
+                    Brand / Make *
+                  </label>
+                  <input
+                    type="text"
+                    value={manualMake}
+                    onChange={(e) => setManualMake(e.target.value)}
+                    placeholder='e.g. "Toyota", "Hyundai", "BMW"'
+                    className="w-full px-4 py-2.5 bg-bg border border-bg-hover rounded-lg text-text text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-red/50 transition-all"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-text-secondary block mb-1">
+                    Model *
+                  </label>
+                  <input
+                    type="text"
+                    value={manualModel}
+                    onChange={(e) => setManualModel(e.target.value)}
+                    placeholder='e.g. "Patrol", "Land Cruiser", "M4"'
+                    className="w-full px-4 py-2.5 bg-bg border border-bg-hover rounded-lg text-text text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-red/50 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-text-secondary block mb-1">
+                    Year (optional)
+                  </label>
+                  <input
+                    type="number"
+                    min="1900"
+                    max="2030"
+                    value={manualYear}
+                    onChange={(e) => setManualYear(e.target.value)}
+                    placeholder="e.g. 2024"
+                    className="w-full px-4 py-2.5 bg-bg border border-bg-hover rounded-lg text-text text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-red/50 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowManualAdd(false)}
+                  className="flex-1 py-2.5 text-text-secondary border border-bg-hover rounded-xl hover:bg-bg-hover transition-all text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleManualAdd}
+                  disabled={addingManual || !manualMake.trim() || !manualModel.trim()}
+                  className="flex-1 py-2.5 bg-accent-red text-white rounded-xl hover:bg-accent-red/90 active:scale-[0.98] transition-all disabled:opacity-60 text-sm font-medium flex items-center justify-center gap-2"
+                >
+                  {addingManual ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Plus className="w-4 h-4" />
+                  )}
+                  Add Car
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
