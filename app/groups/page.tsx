@@ -7,7 +7,7 @@ import { Users, Plus, Key, Copy, Check, Car, Loader2, ArrowLeft, RefreshCw, Brai
 import Link from "next/link";
 
 export default function GroupsPage() {
-  const { session } = useSession();
+  const { session, status } = useSession();
   const router = useRouter();
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +40,7 @@ export default function GroupsPage() {
     e.preventDefault();
     if (!groupName.trim()) return;
 
-    setSubmitting(true);
+    const submitting = true;
     try {
       const res = await fetch("/api/groups", {
         method: "POST",
@@ -66,7 +66,7 @@ export default function GroupsPage() {
     e.preventDefault();
     if (!inviteCode.trim()) return;
 
-    setSubmitting(true);
+    const submitting = true;
     try {
       const res = await fetch("/api/groups/join", {
         method: "POST",
@@ -185,10 +185,9 @@ export default function GroupsPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={submitting}
                 className="flex-1 py-2 bg-accent-red text-white font-semibold rounded-lg text-sm hover:bg-accent-red/90 disabled:opacity-60"
               >
-                {submitting ? "Creating..." : "Create"}
+                Create
               </button>
               <button
                 type="button"
@@ -220,10 +219,9 @@ export default function GroupsPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={submitting}
                 className="flex-1 py-2 bg-accent-yellow text-bg font-semibold rounded-lg text-sm hover:bg-accent-yellow/90 disabled:opacity-60"
               >
-                {submitting ? "Joining..." : "Join"}
+                Join
               </button>
               <button
                 type="button"
