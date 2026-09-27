@@ -23,6 +23,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -86,6 +87,36 @@ export default function AdminPage() {
     }
   };
 
+  const handleCleanDuplicates = async () => {
+    if (!window.confirm("Clean up duplicate drive records across all users? This will keep the best drive for each car (with photo/rating) and remove extras.")) {
+      return;
+    }
+
+    setCleaningDuplicates(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch("/api/admin/clean-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to clean duplicates");
+      }
+
+      setSuccess(data.message || "Duplicates cleaned successfully");
+      fetchUsers(); // Refresh stats
+    } catch (err: any) {
+      setError(err.message || "Failed to clean duplicates");
+    } finally {
+      setCleaningDuplicates(false);
+    }
+  };
+
   if (status === "loading" || loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -107,13 +138,32 @@ export default function AdminPage() {
             Manage users and platform data
           </p>
         </div>
-        <button
-          onClick={fetchUsers}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-card border border-bg-hover hover:bg-bg-hover rounded-lg text-xs font-semibold text-text transition-all active:scale-95"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCleanDuplicates}
+            disabled={cleaningDuplicates}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-red/10 border border-accent-red/30 hover:bg-accent-red/20 rounded-lg text-xs font-semibold text-accent-red transition-all active:scale-95 disabled:opacity-50"
+          >
+            {cleaningDuplicates ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Cleaning...
+              </>
+            ) : (
+              <>
+                <Car className="w-3.5 h-3.5" />
+                Clean Duplicates
+              </>
+            )}
+          </button>
+          <button
+            onClick={fetchUsers}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-card border border-bg-hover hover:bg-bg-hover rounded-lg text-xs font-semibold text-text transition-all active:scale-95"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (

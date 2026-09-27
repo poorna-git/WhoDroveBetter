@@ -3,9 +3,32 @@
 import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Car, Zap, Trophy, Flame, Flag, Star, LogOut, Loader2, Edit, X, Save } from "lucide-react";
-import { BADGES } from "@/lib/points";
+import { Car, Zap, Trophy, Flame, Flag, Star, LogOut, Loader2, Edit, X, Save, Trash2, Camera, MessageSquare } from "lucide-react";
+import { BADGES, TIER_LABELS } from "@/lib/points";
 import { formatNumber, formatCarName } from "@/lib/utils";
+import EditDriveModal, { DriveEditData } from "@/components/EditDriveModal";
+
+interface ProfileDrive {
+  id: string;
+  carId: string;
+  points: number;
+  photoUrl?: string | null;
+  rating?: number | null;
+  comment?: string | null;
+  context?: string | null;
+  isManual?: boolean;
+  createdAt: string;
+  car: {
+    id: string;
+    make: string;
+    model: string;
+    year?: number | null;
+    tier: string;
+    horsepower: number;
+    country: string;
+    imageUrl?: string | null;
+  };
+}
 
 interface ProfileData {
   user: {
@@ -32,6 +55,7 @@ interface ProfileData {
     emoji: string;
     description: string;
   }[];
+  drives?: ProfileDrive[];
   favoriteCar?: {
     make: string;
     model: string;
@@ -47,6 +71,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedDriveToEdit, setSelectedDriveToEdit] = useState<DriveEditData | null>(null);
 
   // Edit form state
   const [editDisplayName, setEditDisplayName] = useState("");
@@ -254,6 +279,127 @@ export default function ProfilePage() {
           )}
         </div>
       )}
+
+      {/* My Garage & Logged Cars */}
+      <div className="bg-bg-card rounded-2xl p-5 border border-bg-hover space-y-4 shadow-xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-heading text-xl text-text flex items-center gap-2">
+              <Car className="w-5 h-5 text-accent-red" />
+              My Garage ({profile.drives?.length || 0})
+            </h3>
+            <p className="text-xs text-text-muted mt-0.5">
+              Manage your logged cars, add photos, ratings, reviews, and manual tags
+            </p>
+          </div>
+          <button
+            onClick={() => router.push("/log")}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-accent-red hover:bg-accent-red/90 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-md shadow-accent-red/20"
+          >
+            + Log Car
+          </button>
+        </div>
+
+        {(!profile.drives || profile.drives.length === 0) ? (
+          <div className="text-center py-8 bg-bg rounded-xl border border-dashed border-bg-hover space-y-3">
+            <p className="text-sm text-text-muted">You haven't logged any cars yet.</p>
+            <button
+              onClick={() => router.push("/log")}
+              className="px-4 py-2 bg-accent-red text-white text-xs font-bold rounded-xl shadow-md"
+            >
+              Log Your First Drive
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {profile.drives.map((drive) => {
+              const tierInfo = TIER_LABELS[drive.car.tier] || TIER_LABELS.common;
+              const allCars = profile.drives!.map((d) => d.car);
+              return (
+                <div
+                  key={drive.id}
+                  className="p-4 bg-bg rounded-xl border border-bg-hover hover:border-bg-hover/80 transition-all flex flex-col justify-between gap-3 group"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-text">
+                          {formatCarName(drive.car, allCars)}
+                        </span>
+                        {drive.isManual && (
+                          <span className="text-[10px] bg-accent-red/15 text-accent-red font-semibold px-2 py-0.5 rounded-full">
+                            🕹️ Manual
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-muted flex items-center gap-1.5 flex-wrap">
+                        <span>{tierInfo.emoji} {tierInfo.label}</span>
+                        <span>•</span>
+                        <span>{drive.car.horsepower} HP</span>
+                        {drive.rating && (
+                          <>
+                            <span>•</span>
+                            <span className="text-accent-yellow font-medium">
+                              ⭐ {drive.rating}/10
+                            </span>
+                          </>
+                        )}
+                      </p>
+                      {drive.comment && (
+                        <p className="text-xs text-text-muted/90 italic line-clamp-2 mt-1">
+                          "{drive.comment}"
+                        </p>
+                      )}
+                    </div>
+
+                    {drive.photoUrl ? (
+                      <img
+                        src={drive.photoUrl}
+                        alt={`${drive.car.make} ${drive.car.model}`}
+                        className="w-16 h-16 rounded-xl object-cover border border-bg-hover flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl bg-bg-card border border-dashed border-bg-hover flex items-center justify-center text-xl flex-shrink-0 text-text-muted/40">
+                        🚗
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-bg-hover/60">
+                    <span className="text-xs font-bold text-accent-yellow flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5" />
+                      {drive.points} pts
+                    </span>
+
+                    <button
+                      onClick={() => {
+                        setSelectedDriveToEdit({
+                          id: drive.id,
+                          carId: drive.carId,
+                          make: drive.car.make,
+                          model: drive.car.model,
+                          year: drive.car.year,
+                          tier: drive.car.tier,
+                          photoUrl: drive.photoUrl,
+                          rating: drive.rating,
+                          comment: drive.comment,
+                          context: drive.context,
+                          isManual: drive.isManual,
+                          points: drive.points,
+                        });
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-card hover:bg-bg-hover border border-bg-hover text-text hover:text-accent-red rounded-lg text-xs font-semibold transition-all active:scale-95"
+                    >
+                      <Edit className="w-3.5 h-3.5 text-accent-red" />
+                      Edit / Remove
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Country Breakdown */}
       {Object.keys(profile.stats.countryBreakdown).length > 0 && (
@@ -467,6 +613,15 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* Edit Drive Modal */}
+      <EditDriveModal
+        isOpen={Boolean(selectedDriveToEdit)}
+        drive={selectedDriveToEdit}
+        onClose={() => setSelectedDriveToEdit(null)}
+        onSaved={fetchProfile}
+        onDeleted={fetchProfile}
+      />
     </div>
   );
 }

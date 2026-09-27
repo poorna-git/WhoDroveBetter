@@ -40,13 +40,12 @@ export async function POST() {
     // For each personal drive, check if it exists in each group, and create if not
     for (const drive of personalDrives) {
       for (const group of userGroups) {
-        // Check if this drive already exists in this group
+        // Check if this car is already logged in this group
         const existing = await prisma.drive.findFirst({
           where: {
             userId,
             carId: drive.carId,
             groupId: group.groupId,
-            createdAt: drive.createdAt, // Same timestamp to identify the backfilled drive
           },
         });
 

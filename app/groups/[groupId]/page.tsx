@@ -17,9 +17,11 @@ import {
   Check,
   Loader2,
   RefreshCw,
+  Edit,
 } from "lucide-react";
 import { formatNumber, formatCarName } from "@/lib/utils";
 import { TIER_LABELS } from "@/lib/points";
+import EditDriveModal, { DriveEditData } from "@/components/EditDriveModal";
 
 interface MemberStats {
   id: string;
@@ -39,12 +41,17 @@ interface MemberStats {
   };
   recentCars: Array<{
     id: string;
+    carId: string;
     make: string;
     model: string;
     year?: number;
     tier: string;
     photoUrl?: string;
     rating?: number;
+    comment?: string;
+    context?: string;
+    isManual?: boolean;
+    points?: number;
     createdAt: string;
   }>;
 }
@@ -66,8 +73,10 @@ export default function GroupDetailsPage() {
   const [group, setGroup] = useState<GroupDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<MemberStats | null>(null);
+  const [selectedDriveToEdit, setSelectedDriveToEdit] = useState<DriveEditData | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
   const [backfillMessage, setBackfillMessage] = useState("");
 
   useEffect(() => {
@@ -90,7 +99,11 @@ export default function GroupDetailsPage() {
 
       setGroup(data.group);
       if (data.group?.members?.length > 0) {
-        setSelectedMember(data.group.members[0]);
+        setSelectedMember((prev) => {
+          if (!prev) return data.group.members[0];
+          const found = data.group.members.find((m: MemberStats) => m.id === prev.id);
+          return found || data.group.members[0];
+        });
       }
     } catch (error) {
       console.error("Failed to load group:", error);
@@ -118,6 +131,24 @@ export default function GroupDetailsPage() {
       setBackfillMessage("Failed to backfill drives");
     } finally {
       setBackfilling(false);
+    }
+  };
+
+  const handleCleanDuplicates = async () => {
+    setCleaningDuplicates(true);
+    setBackfillMessage("");
+    try {
+      const res = await fetch("/api/admin/clean-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      setBackfillMessage(data.message || "Duplicate drives cleaned up!");
+      fetchGroupDetails();
+    } catch {
+      setBackfillMessage("Failed to clean duplicates");
+    } finally {
+      setCleaningDuplicates(false);
     }
   };
 
@@ -211,23 +242,38 @@ export default function GroupDetailsPage() {
           </button>
         </div>
 
-        {/* Sync / Backfill button */}
-        <div className="pt-2 border-t border-bg-hover flex items-center justify-between">
+        {/* Sync / Backfill & Clean button */}
+        <div className="pt-2 border-t border-bg-hover flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-text-muted">
-            Missing past cars in this group?
+            Manage cars in this crew
           </p>
-          <button
-            onClick={handleBackfill}
-            disabled={backfilling}
-            className="px-3 py-1.5 bg-accent-red/10 text-accent-red border border-accent-red/30 hover:bg-accent-red/20 rounded-lg text-xs font-semibold transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {backfilling ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3.5 h-3.5" />
-            )}
-            Sync My Cars to Group
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCleanDuplicates}
+              disabled={cleaningDuplicates}
+              className="px-3 py-1.5 bg-bg border border-bg-hover hover:border-accent-red/40 hover:bg-bg-hover text-text-muted hover:text-accent-red rounded-lg text-xs font-semibold transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+              title="Remove duplicate drive records and sync stats"
+            >
+              {cleaningDuplicates ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Car className="w-3.5 h-3.5" />
+              )}
+              Clean Duplicates
+            </button>
+            <button
+              onClick={handleBackfill}
+              disabled={backfilling}
+              className="px-3 py-1.5 bg-accent-red/10 text-accent-red border border-accent-red/30 hover:bg-accent-red/20 rounded-lg text-xs font-semibold transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {backfilling ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              Sync My Cars to Group
+            </button>
+          </div>
         </div>
 
         {backfillMessage && (
@@ -368,40 +414,117 @@ export default function GroupDetailsPage() {
 
           {/* Member's Car Catalogue */}
           <div className="bg-bg-card rounded-2xl p-4 border border-bg-hover space-y-3">
-            <h4 className="font-heading text-base text-text flex items-center gap-2">
-              <Car className="w-4 h-4 text-accent-red" />
-              {selectedMember.displayName}'s Garage in this Crew
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-heading text-base text-text flex items-center gap-2">
+                <Car className="w-4 h-4 text-accent-red" />
+                {selectedMember.displayName}'s Garage in this Crew
+              </h4>
+              <span className="text-xs text-text-muted">
+                {selectedMember.recentCars.length} {selectedMember.recentCars.length === 1 ? "car" : "cars"}
+              </span>
+            </div>
 
             {selectedMember.recentCars.length === 0 ? (
               <p className="text-sm text-text-muted py-4 text-center">
                 No cars logged directly in this group yet.
               </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {selectedMember.recentCars.map((drive) => {
                   const tierInfo = TIER_LABELS[drive.tier] || TIER_LABELS.common;
+                  const isOwnerOrAdmin =
+                    Boolean(session?.user?.id && (
+                      session.user.id === selectedMember.id ||
+                      (session.user as any)?.email?.toLowerCase() === "admin" ||
+                      (session.user as any)?.email?.toLowerCase() === "poorna" ||
+                      session.user.name?.toLowerCase() === "admin" ||
+                      session.user.name?.toLowerCase() === "poorna"
+                    ));
+
                   return (
                     <div
                       key={drive.id}
-                      className="p-3 bg-bg rounded-xl border border-bg-hover flex items-center justify-between gap-3"
+                      className="p-3 bg-bg rounded-xl border border-bg-hover flex flex-col justify-between gap-3 hover:border-bg-hover/80 transition-all"
                     >
-                      <div className="min-w-0">
-                        <p className="font-semibold text-text text-sm truncate">
-                          {formatCarName(drive, selectedMember.recentCars)}
-                        </p>
-                        <p className="text-xs text-text-muted mt-0.5">
-                          {tierInfo.emoji} {tierInfo.label}
-                          {drive.rating ? ` • ⭐ ${drive.rating}/10` : ""}
-                        </p>
+                      <div className="flex items-start gap-3 min-w-0">
+                        {drive.photoUrl ? (
+                          <img
+                            src={drive.photoUrl}
+                            alt={`${drive.make} ${drive.model}`}
+                            className="w-14 h-14 rounded-xl object-cover border border-bg-hover flex-shrink-0 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-xl bg-bg-card border border-bg-hover flex items-center justify-center text-xl flex-shrink-0">
+                            🏎️
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="font-bold text-text text-sm truncate">
+                            {formatCarName(drive, selectedMember.recentCars)}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <span className="font-semibold text-text-secondary">
+                              {tierInfo.emoji} {tierInfo.label}
+                            </span>
+                            {drive.rating && (
+                              <span className="text-accent-yellow font-bold flex items-center gap-0.5">
+                                • ⭐ {drive.rating}/10
+                              </span>
+                            )}
+                            {drive.isManual && (
+                              <span className="px-1.5 py-0.5 bg-accent-red/10 border border-accent-red/20 text-accent-red rounded text-[10px] font-bold">
+                                Manual 🕹️
+                              </span>
+                            )}
+                            {drive.context && (
+                              <span className="text-[10px] text-text-muted capitalize">
+                                • {drive.context.replace("_", " ")}
+                              </span>
+                            )}
+                          </div>
+                          {drive.comment && (
+                            <p className="text-xs text-text-muted italic line-clamp-1">
+                              "{drive.comment}"
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      {drive.photoUrl && (
-                        <img
-                          src={drive.photoUrl}
-                          alt={`${drive.make} ${drive.model}`}
-                          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-                        />
-                      )}
+
+                      <div className="flex items-center justify-between gap-2 border-t border-bg-hover/50 pt-2">
+                        {drive.points ? (
+                          <span className="flex items-center gap-1 text-xs font-bold text-accent-yellow bg-accent-yellow/10 px-2 py-1 rounded-lg">
+                            <Zap className="w-3.5 h-3.5" />
+                            {drive.points} pts
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+
+                        {isOwnerOrAdmin && (
+                          <button
+                            onClick={() => {
+                              setSelectedDriveToEdit({
+                                id: drive.id,
+                                carId: drive.carId,
+                                make: drive.make,
+                                model: drive.model,
+                                year: drive.year,
+                                tier: drive.tier,
+                                photoUrl: drive.photoUrl,
+                                rating: drive.rating,
+                                comment: drive.comment,
+                                context: drive.context,
+                                isManual: drive.isManual,
+                                points: drive.points,
+                              });
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-bg-card hover:bg-bg-hover border border-bg-hover text-text hover:text-accent-red rounded-lg text-xs font-semibold transition-all active:scale-95"
+                          >
+                            <Edit className="w-3.5 h-3.5 text-accent-red" />
+                            Edit / Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -410,6 +533,15 @@ export default function GroupDetailsPage() {
           </div>
         </div>
       )}
+
+      {/* Edit Drive Modal */}
+      <EditDriveModal
+        isOpen={Boolean(selectedDriveToEdit)}
+        drive={selectedDriveToEdit}
+        onClose={() => setSelectedDriveToEdit(null)}
+        onSaved={fetchGroupDetails}
+        onDeleted={fetchGroupDetails}
+      />
     </div>
   );
 }

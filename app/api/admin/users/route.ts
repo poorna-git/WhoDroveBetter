@@ -16,12 +16,15 @@ export async function GET() {
       where: { id: session.user.id },
     });
 
-    // TODO: Add isAdmin field to User model, for now checking if username is "admin" or first user
+    // Check if user is admin (first user created, or username is 'admin' or 'poorna')
     const allUsers = await prisma.user.findMany({
       orderBy: { createdAt: "asc" },
       take: 1,
     });
-    const isAdmin = currentUser?.id === allUsers[0]?.id;
+    const isAdmin =
+      currentUser?.id === allUsers[0]?.id ||
+      currentUser?.username?.toLowerCase() === "admin" ||
+      currentUser?.username?.toLowerCase() === "poorna";
 
     if (!isAdmin) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });

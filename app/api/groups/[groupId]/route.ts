@@ -73,20 +73,44 @@ export async function GET(
         });
 
         // Get all user drives for overall stats
-        const allDrives = await prisma.drive.findMany({
+        let allDrives = await prisma.drive.findMany({
           where: { userId: member.userId, groupId: null },
           include: { car: true },
         });
 
-        const totalPoints = allDrives.reduce((sum, d) => sum + d.points, 0);
-        const totalHorsepower = allDrives.reduce((sum, d) => sum + d.car.horsepower, 0);
-        const uniqueBrands = [...new Set(allDrives.map((d) => d.car.make))];
-        const uniqueCars = [...new Set(allDrives.map((d) => `${d.car.make}|${d.car.model}`))];
+        if (allDrives.length === 0) {
+          allDrives = await prisma.drive.findMany({
+            where: { userId: member.userId },
+            include: { car: true },
+          });
+        }
+
+        // Deduplicate user drives by carId so stats are accurate
+        const uniqueDrivesMap = new Map<string, typeof allDrives[0]>();
+        for (const drive of allDrives) {
+          if (!drive.carId) continue;
+          if (!uniqueDrivesMap.has(drive.carId)) {
+            uniqueDrivesMap.set(drive.carId, drive);
+          } else {
+            const existing = uniqueDrivesMap.get(drive.carId)!;
+            const scoreExisting = (existing.photoUrl ? 10 : 0) + (existing.rating ? 5 : 0) + (existing.comment ? 2 : 0);
+            const scoreCurrent = (drive.photoUrl ? 10 : 0) + (drive.rating ? 5 : 0) + (drive.comment ? 2 : 0);
+            if (scoreCurrent > scoreExisting) {
+              uniqueDrivesMap.set(drive.carId, drive);
+            }
+          }
+        }
+        const uniqueUserDrives = Array.from(uniqueDrivesMap.values());
+
+        const totalPoints = uniqueUserDrives.reduce((sum, d) => sum + d.points, 0);
+        const totalHorsepower = uniqueUserDrives.reduce((sum, d) => sum + d.car.horsepower, 0);
+        const uniqueBrands = [...new Set(uniqueUserDrives.map((d) => d.car.make))];
+        const uniqueCarIds = [...new Set(uniqueUserDrives.map((d) => d.carId))];
 
         const countryBreakdown: Record<string, number> = {};
         const tierBreakdown: Record<string, number> = {};
 
-        allDrives.forEach((drive) => {
+        uniqueUserDrives.forEach((drive) => {
           countryBreakdown[drive.car.country] = (countryBreakdown[drive.car.country] || 0) + 1;
           tierBreakdown[drive.car.tier] = (tierBreakdown[drive.car.tier] || 0) + 1;
         });
@@ -96,22 +120,27 @@ export async function GET(
           role: member.role,
           joinedAt: member.joinedAt,
           stats: {
-            totalDrives: allDrives.length,
+            totalDrives: uniqueUserDrives.length,
             totalPoints,
             totalHorsepower,
             uniqueBrands: uniqueBrands.length,
-            uniqueCars: uniqueCars.length,
+            uniqueCars: uniqueCarIds.length,
             countryBreakdown,
             tierBreakdown,
           },
-          recentCars: groupDrives.slice(0, 10).map((d) => ({
+          recentCars: groupDrives.map((d) => ({
             id: d.id,
+            carId: d.carId,
             make: d.car.make,
             model: d.car.model,
             year: d.car.year,
             tier: d.car.tier,
             photoUrl: d.photoUrl,
             rating: d.rating,
+            comment: d.comment,
+            context: d.context,
+            isManual: d.isManual,
+            points: d.points,
             createdAt: d.createdAt,
           })),
         };

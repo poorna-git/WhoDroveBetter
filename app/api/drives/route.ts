@@ -232,3 +232,190 @@ export async function GET(req: Request) {
     );
   }
 }
+
+// PUT: Edit drive details (photo, rating, comment, context, manual)
+export async function PUT(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { driveId, carId, photoUrl, rating, comment, context, isManual } = body;
+
+    let targetCarId = carId;
+    let targetUserId = session.user.id;
+
+    if (driveId) {
+      const drive = await prisma.drive.findUnique({
+        where: { id: driveId },
+      });
+
+      if (!drive) {
+        return NextResponse.json({ error: "Drive not found" }, { status: 404 });
+      }
+
+      // Check permissions (must be drive owner or admin)
+      if (drive.userId !== session.user.id) {
+        const currentUser = await prisma.user.findUnique({
+          where: { id: session.user.id },
+        });
+        const firstUser = await prisma.user.findFirst({
+          orderBy: { createdAt: "asc" },
+        });
+        const isAdmin =
+          currentUser?.id === firstUser?.id ||
+          currentUser?.username?.toLowerCase() === "admin" ||
+          currentUser?.username?.toLowerCase() === "poorna";
+
+        if (!isAdmin) {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+      }
+
+      targetCarId = drive.carId;
+      targetUserId = drive.userId;
+    }
+
+    if (!targetCarId) {
+      return NextResponse.json(
+        { error: "driveId or carId is required" },
+        { status: 400 }
+      );
+    }
+
+    const car = await prisma.car.findUnique({
+      where: { id: targetCarId },
+    });
+
+    if (!car) {
+      return NextResponse.json({ error: "Car not found" }, { status: 404 });
+    }
+
+    // Recalculate points
+    const pointsBreakdown = calculatePoints({
+      carTier: car.tier,
+      hasPhoto: Boolean(photoUrl),
+      hasReview: Boolean(rating || comment),
+      isManual: Boolean(isManual),
+      isFirstInGroup: false,
+      isNewBrand: false,
+      streakDays: 0,
+    });
+
+    const parsedRating = rating !== undefined && rating !== null && rating !== ""
+      ? Math.max(1, Math.min(10, parseInt(String(rating))))
+      : null;
+
+    // Update all matching drive records (personal + all groups) for this user & car
+    const updateResult = await prisma.drive.updateMany({
+      where: {
+        userId: targetUserId,
+        carId: targetCarId,
+      },
+      data: {
+        photoUrl: photoUrl ? String(photoUrl).trim() : null,
+        rating: parsedRating,
+        comment: comment ? String(comment).trim() : null,
+        context: context ? String(context).trim() : null,
+        isManual: Boolean(isManual),
+        points: pointsBreakdown.total,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Drive updated successfully across all views",
+      updatedCount: updateResult.count,
+      points: pointsBreakdown.total,
+    });
+  } catch (error) {
+    console.error("Drive update error:", error);
+    return NextResponse.json(
+      { error: "Failed to update drive" },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE: Remove car/drive from garage
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const queryDriveId = searchParams.get("driveId");
+    const queryCarId = searchParams.get("carId");
+    const body = await req.json().catch(() => ({}));
+
+    const driveId = body.driveId || queryDriveId;
+    const carId = body.carId || queryCarId;
+
+    let targetCarId = carId;
+    let targetUserId = session.user.id;
+
+    if (driveId) {
+      const drive = await prisma.drive.findUnique({
+        where: { id: driveId },
+      });
+
+      if (!drive) {
+        return NextResponse.json({ error: "Drive not found" }, { status: 404 });
+      }
+
+      // Check permissions
+      if (drive.userId !== session.user.id) {
+        const currentUser = await prisma.user.findUnique({
+          where: { id: session.user.id },
+        });
+        const firstUser = await prisma.user.findFirst({
+          orderBy: { createdAt: "asc" },
+        });
+        const isAdmin =
+          currentUser?.id === firstUser?.id ||
+          currentUser?.username?.toLowerCase() === "admin" ||
+          currentUser?.username?.toLowerCase() === "poorna";
+
+        if (!isAdmin) {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+      }
+
+      targetCarId = drive.carId;
+      targetUserId = drive.userId;
+    }
+
+    if (!targetCarId) {
+      return NextResponse.json(
+        { error: "driveId or carId is required" },
+        { status: 400 }
+      );
+    }
+
+    // Delete all drive records for this user and car (both personal and groups)
+    const deleteResult = await prisma.drive.deleteMany({
+      where: {
+        userId: targetUserId,
+        carId: targetCarId,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Car removed from garage (${deleteResult.count} record(s) deleted)`,
+      count: deleteResult.count,
+    });
+  } catch (error) {
+    console.error("Drive delete error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete drive" },
+      { status: 500 }
+    );
+  }
+}

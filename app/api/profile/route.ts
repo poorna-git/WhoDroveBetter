@@ -83,15 +83,17 @@ export async function GET(req: Request) {
     }
 
     // Fetch all drives for this user with select projections
-    const drives = await prisma.drive.findMany({
+    const allDrives = await prisma.drive.findMany({
       where: { userId },
       select: {
         id: true,
         carId: true,
+        groupId: true,
         points: true,
         photoUrl: true,
         rating: true,
         comment: true,
+        context: true,
         isManual: true,
         createdAt: true,
         car: {
@@ -103,11 +105,31 @@ export async function GET(req: Request) {
             tier: true,
             horsepower: true,
             country: true,
+            imageUrl: true,
           },
         },
       },
       orderBy: { createdAt: "desc" },
     });
+
+    // Deduplicate drives by carId so each unique car is counted/represented once
+    const uniqueDrivesMap = new Map<string, typeof allDrives[0]>();
+    for (const drive of allDrives) {
+      if (!drive.carId) continue;
+      if (!uniqueDrivesMap.has(drive.carId)) {
+        uniqueDrivesMap.set(drive.carId, drive);
+      } else {
+        // If current drive has photo/rating/comment and existing doesn't, prefer current
+        const existing = uniqueDrivesMap.get(drive.carId)!;
+        const scoreExisting = (existing.photoUrl ? 10 : 0) + (existing.rating ? 5 : 0) + (existing.comment ? 2 : 0);
+        const scoreCurrent = (drive.photoUrl ? 10 : 0) + (drive.rating ? 5 : 0) + (drive.comment ? 2 : 0);
+        if (scoreCurrent > scoreExisting) {
+          uniqueDrivesMap.set(drive.carId, drive);
+        }
+      }
+    }
+
+    const drives = Array.from(uniqueDrivesMap.values());
 
     // Calculate stats safely
     const totalDrives = drives.length;
@@ -191,6 +213,7 @@ export async function GET(req: Request) {
       user,
       stats,
       earnedBadges,
+      drives,
       favoriteCar: favoriteCar && favoriteCar.car
         ? {
             id: favoriteCar.car.id,
