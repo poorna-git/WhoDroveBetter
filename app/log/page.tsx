@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Search, Camera, Star, MessageSquare, Settings2, Loader2, CheckCircle, Car, Plus } from "lucide-react";
+import { Search, Camera, Star, MessageSquare, Settings2, Loader2, CheckCircle, Car, Plus, X } from "lucide-react";
 import { getNoPhotoComment, getTierComment } from "@/lib/comments";
 import { TIER_LABELS } from "@/lib/points";
 
@@ -268,32 +268,57 @@ export default function LogCarPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-8 animate-fade-in">
-      {/* Success Toast */}
-      {showToast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-bg-card border-2 border-accent-green rounded-xl shadow-2xl p-4 animate-fade-in max-w-md">
-          <div className="flex items-start gap-3">
-            <CheckCircle className="w-6 h-6 text-accent-green flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-text font-medium text-sm">{toastMessage}</p>
-              <p className="text-accent-yellow font-heading text-xl mt-1">+{toastPoints} pts</p>
+    <div className="max-w-2xl mx-auto space-y-6 pb-8 animate-fade-in relative">
+      {/* Toast Notification Stack */}
+      <div className="fixed top-4 right-4 sm:right-6 z-50 flex flex-col gap-2.5 w-[calc(100%-2rem)] sm:w-96 max-w-md pointer-events-none">
+        {/* Success Toast */}
+        {showToast && (
+          <div className="pointer-events-auto bg-bg-card/95 backdrop-blur-md border border-accent-green/60 shadow-2xl rounded-2xl p-4 animate-fade-in flex items-start gap-3.5 relative">
+            <CheckCircle className="w-5 h-5 text-accent-green flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 pr-6">
+              <p className="text-text font-bold text-sm leading-tight">{toastMessage}</p>
+              <p className="text-accent-yellow font-heading text-base mt-1 flex items-center gap-1">
+                +{toastPoints} pts earned
+              </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowToast(false)}
+              className="absolute top-3 right-3 text-text-muted hover:text-text p-1 rounded-lg hover:bg-bg-hover transition-colors"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* No Photo Roast Toast */}
-      {showNoPhotoRoast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-accent-red/10 border-2 border-accent-red rounded-xl shadow-2xl p-4 animate-fade-in max-w-md">
-          <div className="flex items-start gap-3">
-            <Camera className="w-6 h-6 text-accent-red flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-accent-red font-bold text-sm mb-1">No Photo? Really? 📸</p>
-              <p className="text-text text-sm italic">"{roastMessage}"</p>
+        {/* No Photo Roast Toast */}
+        {showNoPhotoRoast && (
+          <div className="pointer-events-auto bg-bg-card/95 backdrop-blur-md border border-accent-red/60 shadow-2xl rounded-2xl p-4 animate-fade-in flex items-start gap-3.5 relative">
+            <div className="w-7 h-7 rounded-lg bg-accent-red/20 text-accent-red flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Camera className="w-4 h-4 text-accent-red" />
             </div>
+            <div className="flex-1 min-w-0 pr-6">
+              <div className="flex items-center gap-2">
+                <span className="text-accent-red font-bold text-xs uppercase tracking-wider">
+                  No Photo Roast 📸
+                </span>
+              </div>
+              <p className="text-text text-xs italic mt-1 leading-relaxed">
+                "{roastMessage}"
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowNoPhotoRoast(false)}
+              className="absolute top-3 right-3 text-text-muted hover:text-text p-1 rounded-lg hover:bg-bg-hover transition-colors"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="text-center space-y-2">
         <h1 className="font-heading text-3xl text-text">Log a Car 🚗</h1>
