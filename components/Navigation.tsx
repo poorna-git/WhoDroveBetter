@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PlusCircle, Trophy, Users, User, Compass } from "lucide-react";
+import { PlusCircle, Trophy, Users, User, Compass, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/leaderboard", label: "Ranks", icon: Trophy },
   { href: "/groups", label: "Groups", icon: Users },
   { href: "/profile", label: "Passport", icon: User },
+  // Note: Admin link is excluded from public menu; access controlled at the page level
 ];
 
 export function Navigation() {

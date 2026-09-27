@@ -2,20 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { Users, Plus, Key, Copy, Check, Car, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Users, Plus, Key, Copy, Check, Car, Loader2, ArrowLeft, RefreshCw, Brain } from "lucide-react";
+import Link from "next/link";
 
 export default function GroupsPage() {
-  const { data: session } = useSession();
+  const { session } = useSession();
+  const router = useRouter();
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncingBackfill, setSyncingBackfill] = useState(false);
+  const [copiedCode, setCopiedCode] = useState("");
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
-  const [copiedCode, setCopiedCode] = useState("");
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchGroups();
@@ -87,6 +90,28 @@ export default function GroupsPage() {
     }
   };
 
+  const handleSyncAllGroups = async () => {
+    if (!window.confirm("Sync all your personal drives to every group you're in? This may take a moment.")) return;
+
+    setSyncingBackfill(true);
+    try {
+      const res = await fetch("/api/groups/backfill", { method: "POST" });
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(`✅ ${data.message}`);
+        fetchGroups();
+      } else {
+        alert(data.error || "Failed to sync cars to groups");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong during sync");
+    } finally {
+      setSyncingBackfill(false);
+    }
+  };
+
   const copyInviteCode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
@@ -120,6 +145,28 @@ export default function GroupsPage() {
           Join with Code
         </button>
       </div>
+
+      {/* Backfill All Groups Button */}
+      {session && (
+        <button
+          onClick={handleSyncAllGroups}
+          disabled={syncingBackfill}
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-bg-card border-2 border-accent-yellow/30 text-accent-yellow font-semibold rounded-xl hover:bg-accent-yellow/10 active:scale-95 transition-all text-sm"
+        >
+          <Brain className="w-4 h-4" />
+          {syncingBackfill ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Syncing to all groups...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4" />
+              Sync My Cars to All Groups
+            </>
+          )}
+        </button>
+      )}
 
       {/* Create Group Modal */}
       {showCreate && (
@@ -202,15 +249,14 @@ export default function GroupsPage() {
       ) : (
         <div className="space-y-3">
           {groups.map((group) => (
-            <div
+            <Link
               key={group.id}
-              className="bg-bg-card rounded-xl p-4 space-y-3 hover:bg-bg-hover transition-colors"
+              href={`/groups/${group.id}`}
+              className="block bg-bg-card rounded-xl p-4 space-y-3 hover:bg-bg-hover transition-colors"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-heading text-lg text-text">
-                    {group.name}
-                  </h3>
+                  <h3 className="font-heading text-lg text-text">{group.name}</h3>
                   <p className="text-xs text-text-muted">
                     {group.memberCount} members • {group.driveCount} drives logged
                   </p>
@@ -237,7 +283,7 @@ export default function GroupsPage() {
                   )}
                 </button>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

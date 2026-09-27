@@ -177,10 +177,39 @@ export async function GET(req: Request) {
       where,
       take: limit,
       orderBy: { createdAt: "desc" },
-      include: {
-        car: true,
-        user: { select: { id: true, displayName: true, username: true } },
-        group: { select: { id: true, name: true } },
+      select: {
+        id: true,
+        createdAt: true,
+        points: true,
+        photoUrl: true,
+        rating: true,
+        comment: true,
+        isManual: true,
+        car: {
+          select: {
+            id: true,
+            make: true,
+            model: true,
+            year: true,
+            tier: true,
+            horsepower: true,
+            country: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+        group: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 

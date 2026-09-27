@@ -82,10 +82,30 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Fetch all drives for this user
+    // Fetch all drives for this user with select projections
     const drives = await prisma.drive.findMany({
       where: { userId },
-      include: { car: true },
+      select: {
+        id: true,
+        carId: true,
+        points: true,
+        photoUrl: true,
+        rating: true,
+        comment: true,
+        isManual: true,
+        createdAt: true,
+        car: {
+          select: {
+            id: true,
+            make: true,
+            model: true,
+            year: true,
+            tier: true,
+            horsepower: true,
+            country: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 
